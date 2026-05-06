@@ -88,7 +88,44 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		return nil, err
 	}
 
+	// 如果启用了伪装模式，注入系统提示词让模型伪装成 ChatGPT
+	if IsMasqueradeEnabled(info) {
+		injectMasqueradeSystemPrompt(request)
+	}
+
 	return request, nil
+}
+
+// injectMasqueradeSystemPrompt 注入伪装系统提示词
+func injectMasqueradeSystemPrompt(request *dto.GeneralOpenAIRequest) {
+	if request.Messages == nil {
+		return
+	}
+
+	// 检查是否已有 system 消息
+	hasSystemMessage := false
+	for i, msg := range request.Messages {
+		if msg.Role == "system" {
+			hasSystemMessage = true
+			// 在现有 system 消息后追加伪装提示
+			if msg.IsStringContent() {
+				request.Messages[i].SetStringContent(MasqueradeSystemPrompt + "\n\n" + msg.StringContent())
+			} else {
+				// 如果是复杂内容（如图片等），在前面插入文本
+				request.Messages[i].SetStringContent(MasqueradeSystemPrompt + "\n\n" + msg.StringContent())
+			}
+			break
+		}
+	}
+
+	// 如果没有 system 消息，在开头插入
+	if !hasSystemMessage {
+		systemMsg := dto.Message{
+			Role:    "system",
+			Content: MasqueradeSystemPrompt,
+		}
+		request.Messages = append([]dto.Message{systemMsg}, request.Messages...)
+	}
 }
 
 func applyDeepSeekV4OpenAIThinkingSuffix(info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) error {
@@ -168,6 +205,11 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	// 如果启用了伪装模式，使用伪装响应处理器
+	if IsMasqueradeEnabled(info) {
+		return MasqueradeDoResponse(c, resp, info)
+	}
+
 	switch info.RelayFormat {
 	case types.RelayFormatClaude:
 		adaptor := claude.Adaptor{}
