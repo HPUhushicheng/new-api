@@ -34,20 +34,22 @@ const (
 )
 
 // IsMasqueradeEnabled 检查是否启用了伪装模式
-// 通过判断 info.UpstreamModelName 是否以 "gpt-" 开头来判断
+// 通过判断 info.OriginModelName（用户原始请求的模型名）是否以 "gpt-" 开头来判断
 // 用户在 new-api 管理后台配置模型时，如果希望伪装，将模型名设为 gpt-4o 等 gpt- 开头的名称即可
 func IsMasqueradeEnabled(info *relaycommon.RelayInfo) bool {
 	if info == nil || info.ChannelMeta == nil {
 		return false
 	}
-	modelName := info.UpstreamModelName
+	// 使用 OriginModelName（用户原始请求的模型名）来判断是否启用伪装
+	// 因为 UpstreamModelName 可能被 model_mapping 改写为 deepseek-chat
+	modelName := info.OriginModelName
 	return strings.HasPrefix(modelName, MasqueradeModelPrefix)
 }
 
 // GetMasqueradeModelName 获取伪装后的模型名称
 func GetMasqueradeModelName(info *relaycommon.RelayInfo) string {
-	if info != nil && info.ChannelMeta != nil && info.UpstreamModelName != "" {
-		return info.UpstreamModelName
+	if info != nil && info.OriginModelName != "" {
+		return info.OriginModelName
 	}
 	return MasqueradeModelName
 }
